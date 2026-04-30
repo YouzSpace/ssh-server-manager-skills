@@ -61,6 +61,58 @@ description: >
 
 ---
 
+## SSH 超时保活配置
+
+连接频繁断开时，需同时配置客户端和服务器端，双方互相发送心跳包保持连接。
+
+### 客户端配置（Windows）
+
+修改文件 `~/.ssh/config`，添加或更新 Host 配置：
+
+```
+Host <别名>
+    HostName <服务器IP>
+    User <用户名>
+    IdentityFile ~/.ssh/<私钥文件>
+    ServerAliveInterval 30      # 每30秒发送心跳包
+    ServerAliveCountMax 3       # 最多允许3次无响应
+    ConnectTimeout 15           # 连接超时15秒
+    ConnectionAttempts 3        # 重试3次
+```
+
+### 服务器端配置（Linux）
+
+修改文件 `/etc/ssh/sshd_config`：
+
+```bash
+TCPKeepAlive yes              # 启用TCP层心跳
+ClientAliveInterval 30        # 服务器每30秒检测客户端
+ClientAliveCountMax 3         # 最多允许3次无响应
+```
+
+重启 SSH 服务：
+```bash
+systemctl restart sshd
+```
+
+### 原理
+
+```
+客户端 ←────心跳包────→ 服务器
+   ↑                      ↑
+每30秒发送            每30秒检测
+```
+
+双方都在发送"我还活着"的信号，连接不会被中间网络设备（路由器、防火墙）断开。
+
+| 对比项 | 配置前 | 配置后 |
+|--------|--------|--------|
+| 空闲超时 | 2-3分钟 | 90秒（可配置） |
+| 自动重连 | 无 | 3次尝试 |
+| 连接稳定性 | 容易断开 | 稳定保持 |
+
+---
+
 ## 常用操作模板
 
 ### 查看服务器状态
