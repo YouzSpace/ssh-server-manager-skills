@@ -1,206 +1,215 @@
 ---
 name: ssh-server-manager
+agent_created: true
 description: >
-  SSH 服务器远程操作管理 Skill。支持通过 SSH 密钥连接远程 Linux 服务器，
-  执行命令、管理文件、安装软件、部署服务、查看状态等全方位服务器操作。
+  SSH 服务器远程操作管理 Skill。通过 SSH 密钥连接远程 Linux 服务器，
+  执行命令、管理文件、安装软件、部署服务、查看状态。
   当用户提到连接服务器、SSH、远程服务器、服务器操作、安装软件到服务器、
   查看服务器状态、管理服务器服务、部署到服务器等场景时触发此 Skill。
 ---
 
 # SSH Server Manager Skill
 
-通过 SSH 连接远程 Linux 服务器并执行操作的完整工作流。
+通过 SSH 密钥认证连接远程 Linux 服务器，执行命令、管理服务、部署应用的完整工作流。
 
 ---
 
-## 初始化连接
+## 触发时执行流程
 
-第一次连接服务器时，按以下步骤操作：
+Skill 触发后，按以下顺序执行：
 
-1. **测试连通性**
-   ```bash
-   powershell -Command "Test-NetConnection -ComputerName <IP> -Port 22"
-   ```
-   端口通 → 继续；不通 → 提示用户检查防火墙/安全组。
-
-2. **优先使用 SSH 密钥认证（推荐）**
-   - 生成密钥对（如不存在）：
-     ```bash
-     ssh-keygen -t ed25519 -f <私钥路径> -N "" -C "workbuddy@agent"
-     ```
-   - 私钥保存在本地：`~/.ssh/`  (Windows: `%USERPROFILE%\.ssh\`)
-   - 提示用户将公钥添加到服务器 `~/.ssh/authorized_keys`
-   - 用户提供确认后，测试连接：
-     ```bash
-     ssh -i <私钥路径> -o StrictHostKeyChecking=no <user>@<IP> "echo ok"
-     ```
-
-3. **备选：密码认证（不推荐，仅在用户明确要求时使用）**
-   - Windows 下 `sshpass` 不可用，需提示用户手动输入密码
-   - 或建议用户改用密钥认证
+1. **确定目标服务器** — 从内存文件或用户输入中获取连接参数（IP、用户名、私钥路径、端口）
+2. **测试连通性** — 确认 SSH 端口可达
+3. **建立连接** — 使用密钥认证连接服务器
+4. **执行任务** — 根据用户需求执行具体操作
+5. **验证结果** — 确认操作成功，输出关键信息
+6. **保存信息** — 将新的服务器信息写入内存文件（仅首次连接或信息变更时）
 
 ---
 
-## 连接参数管理
+## 获取连接参数
 
-每次操作服务器时，从以下来源获取连接信息（按优先级）：
+按以下优先级获取服务器连接信息：
 
-1. 用户本次对话中提供的 IP/域名/用户名/端口
-2. 内存文件（`.workbuddy/memory/MEMORY.md` 或 `YYYY-MM-DD.md`）中已保存的服务器信息
-3. 如果用户有多个服务器，询问用户选择哪一台
+1. 用户本次对话中明确提供的 IP/域名/用户名/端口
+2. 内存文件 `MEMORY.md` 中已保存的服务器信息
+3. 用户有多个服务器时，询问用户选择哪一台
 
-### 保存连接信息到内存
-
-成功连接后，将以下信息写入内存文件：
-- 服务器 IP / 域名
-- SSH 端口（默认 22）
-- 用户名
-- 私钥路径
+**首次连接成功后，立即保存以下信息到 `MEMORY.md`：**
+- 服务器 IP / 域名、SSH 端口、用户名、私钥路径
 - 服务器系统信息（OS、架构、内存、磁盘）
-- 已部署的重要服务（端口、密钥、域名等）
+- 已部署的重要服务（名称、端口、版本等）
 
 ---
 
-## SSH 超时保活配置
+## 初始化连接（首次连接新服务器）
 
-连接频繁断开时，需同时配置客户端和服务器端，双方互相发送心跳包保持连接。
+### 1. 测试连通性
 
-### 客户端配置（Windows）
+```bash
+powershell -Command "Test-NetConnection -ComputerName <IP> -Port 22"
+```
 
-修改文件 `~/.ssh/config`，添加或更新 Host 配置：
+- 连通 → 继续下一步
+- 不通 → 提示用户检查防火墙/安全组，等待用户确认后重试
+
+### 2. 配置密钥认证
+
+检查本地是否已有私钥文件，不存在则生成：
+
+```bash
+ssh-keygen -t ed25519 -f <私钥路径> -N "" -C "workbuddy@agent"
+```
+
+将公钥复制到服务器 `~/.ssh/authorized_keys`（提示用户操作或提供命令）。
+
+### 3. 验证连接
+
+```bash
+ssh -i <私钥路径> -o StrictHostKeyChecking=no <user>@<IP> "echo ok"
+```
+
+返回 `ok` → 连接成功，继续执行任务。失败 → 排查密钥权限或防火墙问题。
+
+### 4. 采集服务器信息（首次连接）
+
+```bash
+ssh -i <私钥> <user>@<IP> "uname -a && free -h && df -h / && cat /etc/os-release"
+```
+
+将结果保存到内存文件。
+
+---
+
+## SSH 超时保活
+
+当用户反馈 SSH 连接频繁断开时，执行以下配置：
+
+### 客户端配置
+
+读取 `~/.ssh/config`，检查目标 Host 是否已包含保活参数。若未配置，追加以下内容：
 
 ```
 Host <别名>
     HostName <服务器IP>
     User <用户名>
     IdentityFile ~/.ssh/<私钥文件>
-    ServerAliveInterval 30      # 每30秒发送心跳包
-    ServerAliveCountMax 3       # 最多允许3次无响应
-    ConnectTimeout 15           # 连接超时15秒
-    ConnectionAttempts 3        # 重试3次
+    ServerAliveInterval 30
+    ServerAliveCountMax 3
+    ConnectTimeout 15
+    ConnectionAttempts 3
 ```
 
-### 服务器端配置（Linux）
+### 服务器端配置
 
-修改文件 `/etc/ssh/sshd_config`：
+通过 SSH 远程修改 `/etc/ssh/sshd_config`，确保以下配置已启用（未注释）：
+
+```
+TCPKeepAlive yes
+ClientAliveInterval 30
+ClientAliveCountMax 3
+```
+
+然后重启 SSH 服务：
 
 ```bash
-TCPKeepAlive yes              # 启用TCP层心跳
-ClientAliveInterval 30        # 服务器每30秒检测客户端
-ClientAliveCountMax 3         # 最多允许3次无响应
+ssh -i <私钥> <user>@<IP> "systemctl restart sshd"
 ```
 
-重启 SSH 服务：
-```bash
-systemctl restart sshd
-```
+### 验证
 
-### 原理
-
-```
-客户端 ←────心跳包────→ 服务器
-   ↑                      ↑
-每30秒发送            每30秒检测
-```
-
-双方都在发送"我还活着"的信号，连接不会被中间网络设备（路由器、防火墙）断开。
-
-| 对比项 | 配置前 | 配置后 |
-|--------|--------|--------|
-| 空闲超时 | 2-3分钟 | 90秒（可配置） |
-| 自动重连 | 无 | 3次尝试 |
-| 连接稳定性 | 容易断开 | 稳定保持 |
+配置完成后，执行一个长时间命令（如 `top -b -n 1`），确认连接不再中途断开。
 
 ---
 
-## 常用操作模板
+## 执行服务器操作
 
 ### 查看服务器状态
+
 ```bash
-ssh -i <私钥> <user>@<IP> "uptime && free -h && df -h && docker ps"
+ssh -i <私钥> <user>@<IP> "uptime && free -h && df -h / && docker ps 2>/dev/null"
 ```
 
+输出关键指标：运行时间、内存使用、磁盘占用、运行中的容器。
+
 ### 执行任意命令
+
 ```bash
 ssh -i <私钥> <user>@<IP> "<command>"
 ```
 
-### 上传文件到服务器
+执行前向用户确认命令内容，执行后输出结果。
+
+### 上传文件
+
 ```bash
 scp -i <私钥> <本地文件> <user>@<IP>:<远程路径>
 ```
 
-### 从服务器下载文件
+上传后验证文件存在：`ssh -i <私钥> <user>@<IP> "ls -lh <远程路径>"`
+
+### 下载文件
+
 ```bash
 scp -i <私钥> <user>@<IP>:<远程文件> <本地路径>
 ```
 
-### 在服务器上执行本地脚本
+### 执行本地脚本
+
 ```bash
 ssh -i <私钥> <user>@<IP> "bash -s" < <本地脚本文件>
 ```
 
 ---
 
-## 安装 MTG (MTProto Proxy)
+## 管理 MTG (MTProto Proxy)
 
-> 详细安装参考：[references/mtg-install.md](references/mtg-install.md)
+> 详细安装步骤参考：[references/mtg-install.md](references/mtg-install.md)
 
-**当前安装详情：**
+### 检查 MTG 状态
 
-| 项目 | 信息 |
-|------|------|
-| 安装路径 | /usr/local/bin/mtg |
-| 配置文件 | /etc/mtg/config.toml |
-| 服务文件 | /etc/systemd/system/mtg.service |
-| 版本 | v2.2.8 |
-| 安装方式 | 直接下载二进制文件 |
+```bash
+ssh -i <私钥> <user>@<IP> "systemctl status mtg && mtg --version"
+```
 
-**安装工作流：**
+### 安装 MTG（新服务器）
 
-1. 检查服务器环境（OS、架构）
-2. 下载最新版本二进制文件（或使用 Docker 方式）
-3. 安装到 `/usr/local/bin/mtg`
+1. 检查服务器架构：`uname -m`
+2. 下载对应版本二进制文件（参考 `references/mtg-install.md`）
+3. 安装到 `/usr/local/bin/mtg` 并赋权
 4. 生成 Secret：`mtg generate-secret example.com`
 5. 创建配置文件 `/etc/mtg/config.toml`
-6. 创建 systemd 服务并启动
-7. 验证运行状态（`systemctl status mtg`）
-8. 生成 Telegram 连接链接：
-   ```
-   https://t.me/proxy?server=<域名或IP>&port=443&secret=<SECRET>
-   ```
-9. 如有域名，提示用户设置 DNS A 记录指向服务器 IP
-10. 提醒 Cloudflare 用户关闭代理（橙色云朵变灰色）
+6. 创建 systemd 服务文件（参考 `references/mtg-install.md`）
+7. 启动并验证：`systemctl enable mtg && systemctl start mtg && systemctl status mtg`
+8. 确认端口监听：`ss -tlnp | grep 443`
+9. 生成 Telegram 连接链接提供给用户
 
-**常用管理命令：**
+### 管理 MTG 服务
+
 ```bash
 systemctl status mtg    # 查看状态
 systemctl restart mtg   # 重启
 systemctl stop mtg      # 停止
-journalctl -u mtg -f    # 查看日志
+journalctl -u mtg -f    # 实时查看日志
 ```
 
 ---
 
-## 其他常见操作参考
+## 安全规则
 
-| 操作 | 说明 |
-|------|------|
-| 安装软件 | `apt-get install -y <包名>` 或 `yum install -y <包名>` |
-| 管理 MTG 代理 | `systemctl status/restart/stop mtg`、`journalctl -u mtg -f` |
-| 查看日志 | `journalctl -u <服务名>` 或直接读 log 文件 |
-| 管理防火墙 | `ufw`、`firewalld`、`iptables` 根据系统选择 |
-| 设置定时任务 | `crontab -e` 或通过 `automation_update` 工具 |
-| 清理磁盘 | `docker system prune -f`、`apt-get clean` |
-| 查看网络流量 | `vnstat`、`iftop`（需安装）|
-| 管理 systemd 服务 | `systemctl status/enable/disable/restart <服务>` |
+- **敏感信息不输出**：Secret、密码、私钥内容不直接显示，提示用户自行保存
+- **操作前确认**：执行破坏性命令（rm、stop、uninstall）前必须向用户确认
+- **不推送内部文件**：`.workbuddy/` 目录仅用于本地内存，不提交到 Git
+- **Cloudflare 提醒**：使用域名时，若配置了 Cloudflare，提醒用户关闭代理（DNS only）
 
 ---
 
-## 注意事项
+## 故障排查
 
-- **内存小于 1GB 的服务器**：避免运行重型服务，注意磁盘空间
-- **防火墙**：Docker 映射的端口需同时确保云安全组已放行
-- **Cloudflare**：使用域名时，若用了 Cloudflare，需关闭代理（DNS only）
-- **多用户分享代理**：提醒用户注意资源限制和安全风险
-- **敏感信息**：Secret、密码等不直接显示在最终输出中（可提示用户保存）
+| 现象 | 排查步骤 |
+|------|----------|
+| SSH 连接超时 | 检查防火墙/安全组是否放行端口 22 |
+| SSH 连接断开 | 执行 SSH 超时保活配置 |
+| 密钥认证失败 | 检查私钥权限（600）、authorized_keys 内容 |
+| 端口被占用 | `ss -tlnp \| grep <端口>` 查看占用进程 |
+| 服务启动失败 | `journalctl -u <服务名> -n 50` 查看日志 |
