@@ -22,5 +22,8 @@ desktop.ini
 # Logs
 *.log
 
-# WorkBuddy internal
+# WorkBuddy internal state
 .workbuddy/
+
+# OpenClaw internal state
+.agents/

@@ -1,6 +1,5 @@
 ---
 name: ssh-server-manager
-agent_created: true
 description: >
   SSH 服务器远程操作管理 Skill。通过 SSH 密钥连接远程 Linux 服务器，
   执行命令、管理文件、安装软件、部署服务、查看状态。
@@ -18,38 +17,29 @@ description: >
 
 Skill 触发后，按以下顺序执行：
 
-1. **确定目标服务器** — 从内存文件或用户输入中获取连接参数（IP、用户名、私钥路径、端口）
+1. **确定目标服务器** — 获取连接参数（IP、用户名、私钥路径、端口），来源优先级：
+   - 用户本次对话中明确提供的信息
+   - 用户 `~/.ssh/config` 中已配置的 Host 别名
+   - 若有多个服务器，询问用户选择
 2. **测试连通性** — 确认 SSH 端口可达
 3. **建立连接** — 使用密钥认证连接服务器
 4. **连接成功后，展示选项菜单** — 让用户选择接下来要做什么
 5. **执行任务** — 根据用户选择执行具体操作
 6. **验证结果** — 确认操作成功，输出关键信息
-7. **保存信息** — 将新的服务器信息写入内存文件（仅首次连接或信息变更时）
-
-### 连接成功后的选项菜单
-
-首次成功连接服务器时，向用户展示以下选项：
-
-1. **安装 3X-UI 面板** — 一键部署 Xray 管理面板（含节点配置、域名绑定、BBR 优化）
-2. **安装 MTG 服务** — 部署 MTProto Proxy 代理服务
-3. **自由操作** — 手动执行命令或查看服务器状态
-
-用户选择后，跳转到对应章节执行。
+7. **保存连接信息** — 更新用户 `~/.ssh/config`，方便后续快速连接
 
 ---
 
-## 获取连接参数
+## 连接成功后的选项菜单
 
-按以下优先级获取服务器连接信息：
+首次成功连接服务器时，向用户展示以下选项：
 
-1. 用户本次对话中明确提供的 IP/域名/用户名/端口
-2. 内存文件 `MEMORY.md` 中已保存的服务器信息
-3. 用户有多个服务器时，询问用户选择哪一台
+1. **安装服务** — 根据 `references/` 中的安装文档部署服务（如 3X-UI、MTG 等）
+2. **管理服务** — 管理已部署的服务（启动/停止/重启/查看日志）
+3. **查看状态** — 展示服务器整体状态概览
+4. **自由操作** — 手动执行命令
 
-**首次连接成功后，立即保存以下信息到 `MEMORY.md`：**
-- 服务器 IP / 域名、SSH 端口、用户名、私钥路径
-- 服务器系统信息（OS、架构、内存、磁盘）
-- 已部署的重要服务（名称、端口、版本等）
+用户选择后，跳转到对应操作执行。
 
 ---
 
@@ -69,7 +59,7 @@ powershell -Command "Test-NetConnection -ComputerName <IP> -Port 22"
 检查本地是否已有私钥文件，不存在则生成：
 
 ```bash
-ssh-keygen -t ed25519 -f <私钥路径> -N "" -C "workbuddy@agent"
+ssh-keygen -t ed25519 -f <私钥路径> -N "" -C "ssh-server-manager"
 ```
 
 将公钥复制到服务器 `~/.ssh/authorized_keys`（提示用户操作或提供命令）。
@@ -88,7 +78,7 @@ ssh -i <私钥路径> -o StrictHostKeyChecking=no <user>@<IP> "echo ok"
 ssh -i <私钥> <user>@<IP> "uname -a && free -h && df -h / && cat /etc/os-release"
 ```
 
-将结果保存到内存文件。
+将结果记录下来，供后续操作参考。
 
 ---
 
@@ -173,85 +163,41 @@ ssh -i <私钥> <user>@<IP> "bash -s" < <本地脚本文件>
 
 ---
 
-## 安装 3X-UI 面板
+## 服务部署
 
-### 执行安装
+### 通用部署模式
 
-1. 在服务器上运行官方安装脚本：
-   ```bash
-   ssh -i <私钥> <user>@<IP> "bash <(curl -Ls https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.sh)"
-   ```
-   - 安装脚本是交互式的，端口、账号、密码均选择**随机生成**，其他选项保持默认
-   - 若安装脚本无法访问，参考 https://github.com/MHSanaei/3x-ui 获取最新安装方式
-
-2. 安装完成后，脚本会输出面板访问信息，**将这些信息保存到内存文件**：
-   - 面板地址（IP + 端口）
-   - 登录账号和密码
-   - 面板路径（如 `/path`）
-
-3. 向用户确认面板信息，提醒用户保存账号密码
-
-### 域名绑定
-
-安装完成后，询问用户是否需要绑定域名：
-
-- **绑定**：让用户输入域名，执行以下步骤：
-  1. 提醒用户在域名 DNS 添加 A 记录指向服务器 IP
-  2. 确认 DNS 生效后，在 3X-UI 面板中设置域名（或通过命令行配置）
-  3. 配置 SSL 证书（推荐使用面板内置的 ACME 申请 Let's Encrypt 证书）
-  4. 若使用 Cloudflare，提醒关闭代理（DNS only / 灰色云朵）
-
-- **不绑定**：跳过此步骤，继续下一步
-
-### BBR 优化
-
-域名配置完成后（或跳过绑定后），询问用户是否开启 BBR：
-
-- **开启**：执行以下命令启用 BBR 拥塞控制算法：
-  ```bash
-  ssh -i <私钥> <user>@<IP> "echo 'net.core.default_qdisc=fq' >> /etc/sysctl.conf && echo 'net.ipv4.tcp_congestion_control=bbr' >> /etc/sysctl.conf && sysctl -p && sysctl net.ipv4.tcp_congestion_control"
-  ```
-  - 验证输出包含 `bbr` 即为成功
-
-- **不开**：跳过此步骤
-
-### 验证安装
-
-1. 确认面板服务运行中：`systemctl status x-ui`
-2. 确认端口监听：`ss -tlnp | grep x-ui`
-3. 提供面板访问链接给用户
-
----
-
-## 管理 MTG (MTProto Proxy)
-
-> 详细安装步骤参考：[references/mtg-install.md](references/mtg-install.md)
-
-### 检查 MTG 状态
-
-```bash
-ssh -i <私钥> <user>@<IP> "systemctl status mtg && mtg --version"
-```
-
-### 安装 MTG（新服务器）
+安装任何服务时，遵循以下通用步骤：
 
 1. 检查服务器架构：`uname -m`
-2. 下载对应版本二进制文件（参考 `references/mtg-install.md`）
-3. 安装到 `/usr/local/bin/mtg` 并赋权
-4. 生成 Secret：`mtg generate-secret example.com`
-5. 创建配置文件 `/etc/mtg/config.toml`
-6. 创建 systemd 服务文件（参考 `references/mtg-install.md`）
-7. 启动并验证：`systemctl enable mtg && systemctl start mtg && systemctl status mtg`
-8. 确认端口监听：`ss -tlnp | grep 443`
-9. 生成 Telegram 连接链接提供给用户
+2. 确认系统包管理器（apt/yum/dnf）
+3. 检查所需依赖是否已安装
+4. 下载/安装目标服务
+5. 配置服务（配置文件、systemd 单元）
+6. 启动并验证服务状态
+7. 确认端口监听
+8. 输出服务访问信息给用户
 
-### 管理 MTG 服务
+### 可用的安装参考文档
+
+| 服务 | 参考文档 |
+|------|----------|
+| 3X-UI 面板 | [references/3x-ui-install.md](references/3x-ui-install.md) |
+| MTG (MTProto Proxy) | [references/mtg-install.md](references/mtg-install.md) |
+
+对于 `references/` 中未覆盖的服务，按通用部署模式执行，或提示用户参考服务官方文档。
+
+### 管理已部署服务
+
+通用的服务管理命令：
 
 ```bash
-systemctl status mtg    # 查看状态
-systemctl restart mtg   # 重启
-systemctl stop mtg      # 停止
-journalctl -u mtg -f    # 实时查看日志
+systemctl status <服务名>     # 查看状态
+systemctl restart <服务名>    # 重启
+systemctl stop <服务名>       # 停止
+systemctl enable <服务名>     # 开机自启
+journalctl -u <服务名> -f     # 实时查看日志
+ss -tlnp | grep <端口>        # 检查端口监听
 ```
 
 ---
@@ -260,7 +206,6 @@ journalctl -u mtg -f    # 实时查看日志
 
 - **敏感信息不输出**：Secret、密码、私钥内容不直接显示，提示用户自行保存
 - **操作前确认**：执行破坏性命令（rm、stop、uninstall）前必须向用户确认
-- **不推送内部文件**：`.workbuddy/` 目录仅用于本地内存，不提交到 Git
 - **Cloudflare 提醒**：使用域名时，若配置了 Cloudflare，提醒用户关闭代理（DNS only）
 
 ---
@@ -274,4 +219,4 @@ journalctl -u mtg -f    # 实时查看日志
 | 密钥认证失败 | 检查私钥权限（600）、authorized_keys 内容 |
 | 端口被占用 | `ss -tlnp \| grep <端口>` 查看占用进程 |
 | 服务启动失败 | `journalctl -u <服务名> -n 50` 查看日志 |
-| 3X-UI 面板无法访问 | 检查防火墙是否放行面板端口、确认 x-ui 服务运行中 |
+| 面板无法访问 | 检查防火墙是否放行面板端口、确认服务运行中 |
