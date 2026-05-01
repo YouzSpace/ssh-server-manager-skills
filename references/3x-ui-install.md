@@ -55,30 +55,42 @@ bash <(curl -Ls https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.
 
 ## 域名绑定
 
-### 步骤
+### 1. 购买域名
 
-1. 在域名 DNS 添加 A 记录，指向服务器 IP
-2. 等待 DNS 生效（通常几分钟）
-3. 在 3X-UI 面板中设置域名，或通过命令行配置
-4. 配置 SSL 证书（通过 x-ui CLI）：
+推荐 [Spaceship](https://www.spaceship.com/zh/)，选择便宜后缀（如六位数字 xyz），注册地选非大陆，其他信息可填写虚拟信息。使用支付宝支付，建议电脑端操作，网络不畅时开代理。
 
-   ```bash
-   x-ui  # 进入管理菜单
-   # 选择 SSL Certificate Management → Get SSL (Domain)
-   # 输入域名，端口默认回车
-   # ACME 选 n（首次申请）
-   # 是否为面板设置此证书？选 y
-   ```
+### 2. 托管到 Cloudflare
 
-   > 也可通过面板 Web 界面申请，或手动配置 Nginx 反向代理 + SSL
+1. 注册 [Cloudflare](https://www.cloudflare.com/) 并登录
+2. 左侧「域名」→「概述」→「添加域名」，填写域名 → 免费套餐 → 继续
+3. 添加 A 记录：
 
-### 域名 + Cloudflare 配置
+| 设置项 | 值 | 说明 |
+|--------|-----|------|
+| 类型 | A | |
+| 名称 | 自定义前缀或 `@` | `@` = 无前缀（裸域名） |
+| IPv4 | 服务器 IP | |
+| 代理 | 关闭（灰色云朵） | ⚠️ 必须 DNS only |
 
-1. **购买域名**：推荐 [Spaceship](https://www.spaceship.com/zh/)，选择便宜后缀（如六位数字 xyz），注册地选非大陆
-2. **托管到 Cloudflare**：添加域名 → 免费套餐 → 添加 A 记录（名称填前缀或 `@`，IPv4 填服务器 IP，代理关闭）→ 激活
-3. **替换 Nameserver**：回到域名注册商，将 DNS 服务器替换为 Cloudflare 提供的 Nameserver
+4. 点击「激活」，记录 Cloudflare 给出的 Nameserver 地址
+5. 回到域名注册商，将 DNS 服务器替换为 Cloudflare 的 Nameserver
 
-> ⚠️ Cloudflare 代理必须关闭（DNS only / 灰色云朵），否则 WebSocket 等协议无法正常连接
+> ⚠️ Cloudflare 代理必须关闭（DNS only），否则 WebSocket 等协议无法正常连接
+
+### 3. 配置 SSL 证书
+
+DNS 生效后，通过 x-ui CLI 申请 Let's Encrypt 证书：
+
+```bash
+x-ui                                    # 进入管理菜单
+# → SSL Certificate Management
+# → Get SSL (Domain)
+# 输入域名，端口默认回车
+# ACME 选 n（首次申请）
+# Would you like to set this certificate for the panel? 选 y
+```
+
+> 也可通过面板 Web 界面申请。如无法访问面板，尝试用 http 而非 https 登录。
 
 ---
 
@@ -110,16 +122,12 @@ sysctl net.ipv4.tcp_congestion_control
 # 查看面板状态
 systemctl status x-ui
 
-# 启动面板
+# 启动/停止/重启
 x-ui start
-
-# 停止面板
 x-ui stop
-
-# 重启面板
 x-ui restart
 
-# 查看面板状态
+# 查看运行状态
 x-ui status
 
 # 查看面板日志
