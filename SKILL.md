@@ -247,3 +247,30 @@ ss -tlnp | grep <端口>        # 检查端口监听
 | 端口被占用 | `ss -tlnp \| grep <端口>` 查看占用进程 |
 | 服务启动失败 | `journalctl -u <服务名> -n 50` 查看日志 |
 | 面板无法访问 | 检查防火墙是否放行面板端口、确认服务运行中 |
+
+---
+
+## 安装与更新
+
+### 用户请求更新时的执行流程
+
+当用户说"更新 Skill"、"更新一下"、"升级 Skill"等类似表述时：
+
+1. 检测 Skill 安装目录（优先 `~/.workbuddy/skills/ssh-server-manager`，其次 `~/.agents/skills/ssh-server-manager`）
+2. 执行更新命令：
+   ```bash
+   cd <Skill安装目录> && git pull origin main
+   ```
+3. 若 git pull 失败（本地有修改冲突），执行：
+   ```bash
+   git stash && git pull origin main
+   ```
+4. 向用户确认更新完成，简要说明本次更新内容
+
+### 一键安装/更新（用户手动执行）
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/YouzSpace/ssh-server-manager-skills/main/install.sh | bash
+```
+
+脚本自动判断：已安装则更新（git pull），未安装则全新安装（git clone）。

@@ -29,14 +29,41 @@
 
 ## 安装
 
+### 一键安装（推荐）
+
+复制以下命令到终端，回车即可：
+
 ```bash
-# 克隆到 Skill 目录（根据平台选择路径）
+curl -fsSL https://raw.githubusercontent.com/YouzSpace/ssh-server-manager-skills/main/install.sh | bash
+```
+
+脚本自动检测平台（WorkBuddy / OpenClaw），自动创建目录，自动完成安装。
+
+### 手动安装
+
+```bash
 # WorkBuddy:
 git clone https://github.com/YouzSpace/ssh-server-manager-skills.git ~/.workbuddy/skills/ssh-server-manager
 
 # OpenClaw:
 git clone https://github.com/YouzSpace/ssh-server-manager-skills.git ~/.agents/skills/ssh-server-manager
 ```
+
+## 更新
+
+运行和安装相同的命令，脚本会自动判断是安装还是更新：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/YouzSpace/ssh-server-manager-skills/main/install.sh | bash
+```
+
+或手动更新：
+
+```bash
+cd ~/.workbuddy/skills/ssh-server-manager && git pull origin main
+```
+
+也可以对 AI 助手说"更新 Skill"，助手会自动执行更新。
 
 ## 使用方式
 
@@ -83,6 +110,7 @@ python3 scripts/ssh_helper.py download --host 192.168.1.100 --user root --key ~/
 ssh-server-manager/
 ├── SKILL.md                    # Skill 定义（AgentSkills 标准）
 ├── README.md                   # 本文件
+├── install.sh                  # 一键安装/更新脚本
 ├── LICENSE                     # MIT 许可证
 ├── .gitignore
 ├── references/                 # 服务安装参考文档
