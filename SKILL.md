@@ -256,7 +256,11 @@ ss -tlnp | grep <端口>        # 检查端口监听
 
 当用户说"更新 Skill"、"更新一下"、"升级 Skill"等类似表述时：
 
-1. 检测 Skill 安装目录（优先 `~/.workbuddy/skills/ssh-server-manager`，其次 `~/.agents/skills/ssh-server-manager`）
+1. 检测 Skill 安装目录，按以下优先级查找：
+   - WorkBuddy：`~/.workbuddy/skills/ssh-server-manager`
+   - OpenClaw 个人级：`~/.agents/skills/ssh-server-manager`
+   - OpenClaw 工作区级：`<workspace>/skills/ssh-server-manager`
+   - 找到哪个目录有 `.git` 文件夹就用哪个
 2. 执行更新命令：
    ```bash
    cd <Skill安装目录> && git pull origin main
