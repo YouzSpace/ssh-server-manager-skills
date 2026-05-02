@@ -40,22 +40,57 @@ bash <(curl -Ls https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.
 
 ---
 
+## 创建入站
+
+安装完成后需要在面板中创建入站才能使用：
+
+1. 登录面板 → 左侧菜单 **入站列表** → **添加入站**
+2. 常用协议推荐：
+   - **VLESS + WebSocket**：适合配合 Cloudflare CDN
+   - **Trojan**：伪装 HTTPS 流量，隐蔽性好
+3. 设置端口、用户、流量限制后保存
+4. 客户端可通过面板生成的链接/二维码导入配置
+
+---
+
 ## 域名绑定
 
-### 步骤
+### 1. 购买域名
 
-1. 在域名 DNS 添加 A 记录，指向服务器 IP
-2. 等待 DNS 生效（通常几分钟）
-3. 在 3X-UI 面板中设置域名，或通过命令行配置
-4. 配置 SSL 证书：
-   - 推荐使用面板内置的 ACME 功能申请 Let's Encrypt 证书
-   - 或手动配置 Nginx 反向代理 + SSL
+推荐 [Spaceship](https://www.spaceship.com/zh/)，选择便宜后缀（如六位数字 xyz），注册地选非大陆，其他信息可填写虚拟信息。使用支付宝支付，建议电脑端操作，网络不畅时开代理。
 
-### Cloudflare 用户提醒
+### 2. 托管到 Cloudflare
 
-若使用 Cloudflare 作为 DNS 代理：
-- 面板域名需关闭代理（DNS only / 灰色云朵）
-- 原因：Cloudflare 代理会干扰 WebSocket 等协议的正常连接
+1. 注册 [Cloudflare](https://www.cloudflare.com/) 并登录
+2. 左侧「域名」→「概述」→「添加域名」，填写域名 → 免费套餐 → 继续
+3. 添加 A 记录：
+
+| 设置项 | 值 | 说明 |
+|--------|-----|------|
+| 类型 | A | |
+| 名称 | 自定义前缀或 `@` | `@` = 无前缀（裸域名） |
+| IPv4 | 服务器 IP | |
+| 代理 | 关闭（灰色云朵） | ⚠️ 必须 DNS only |
+
+4. 点击「激活」，记录 Cloudflare 给出的 Nameserver 地址
+5. 回到域名注册商，将 DNS 服务器替换为 Cloudflare 的 Nameserver
+
+> ⚠️ Cloudflare 代理必须关闭（DNS only），否则 WebSocket 等协议无法正常连接
+
+### 3. 配置 SSL 证书
+
+DNS 生效后，通过 x-ui CLI 申请 Let's Encrypt 证书：
+
+```bash
+x-ui                                    # 进入管理菜单
+# → SSL Certificate Management
+# → Get SSL (Domain)
+# 输入域名，端口默认回车
+# ACME 选 n（首次申请）
+# Would you like to set this certificate for the panel? 选 y
+```
+
+> 也可通过面板 Web 界面申请。如无法访问面板，尝试用 http 而非 https 登录。
 
 ---
 
@@ -87,16 +122,12 @@ sysctl net.ipv4.tcp_congestion_control
 # 查看面板状态
 systemctl status x-ui
 
-# 启动面板
+# 启动/停止/重启
 x-ui start
-
-# 停止面板
 x-ui stop
-
-# 重启面板
 x-ui restart
 
-# 查看面板状态
+# 查看运行状态
 x-ui status
 
 # 查看面板日志
@@ -124,7 +155,7 @@ x-ui uninstall
 
 | 现象 | 排查步骤 |
 |------|----------|
-| 面板无法访问 | 检查防火墙/安全组是否放行面板端口 |
+| 面板无法访问 | 检查防火墙/安全组是否放行面板端口。若使用 https 无法访问，尝试去掉 `s` 改用 http |
 | 面板无法访问 | 确认 x-ui 服务运行中：`systemctl status x-ui` |
 | 登录失败 | 确认账号密码正确，可重置：`x-ui reset` |
 | 节点无法连接 | 检查节点端口是否在防火墙中放行 |

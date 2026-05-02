@@ -209,7 +209,7 @@ ssh -i <私钥> <user>@<IP> "bash -s" < <本地脚本文件>
 
 | 服务 | 参考文档 |
 |------|----------|
-| 3X-UI 面板 | [references/3x-ui-install.md](references/3x-ui-install.md) |
+| 3X-UI 面板（含域名/Cloudflare/SSL 配置） | [references/3x-ui-install.md](references/3x-ui-install.md) |
 | MTG (MTProto Proxy) | [references/mtg-install.md](references/mtg-install.md) |
 
 对于 `references/` 中未覆盖的服务，按通用部署模式执行，或提示用户参考服务官方文档。
