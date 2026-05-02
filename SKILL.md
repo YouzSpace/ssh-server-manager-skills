@@ -48,7 +48,7 @@ Skill 触发后，按以下顺序执行：
 ### 1. 测试连通性
 
 ```bash
-powershell -Command "Test-NetConnection -ComputerName <IP> -Port 22"
+ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no <user>@<IP> "echo ok" 2>/dev/null && echo "端口可达" || echo "端口不可达"
 ```
 
 - 连通 → 继续下一步
@@ -94,7 +94,7 @@ ssh -i <私钥> <user>@<IP> "uname -a && free -h && df -h / && cat /etc/os-relea
 
 ### 服务器连接信息
 
-以下信息保存到 **MEMORY.md**（本地内存文件，不上传 Git）：
+以下信息保存到本地内存文件（WorkBuddy: `MEMORY.md`，OpenClaw: 本地状态），不上传 Git：
 
 - 服务器 IP / 域名、SSH 端口
 - 用户名
@@ -247,3 +247,34 @@ ss -tlnp | grep <端口>        # 检查端口监听
 | 端口被占用 | `ss -tlnp \| grep <端口>` 查看占用进程 |
 | 服务启动失败 | `journalctl -u <服务名> -n 50` 查看日志 |
 | 面板无法访问 | 检查防火墙是否放行面板端口、确认服务运行中 |
+
+---
+
+## 安装与更新
+
+### 用户请求更新时的执行流程
+
+当用户说"更新 Skill"、"更新一下"、"升级 Skill"等类似表述时：
+
+1. 检测 Skill 安装目录，按以下优先级查找：
+   - WorkBuddy：`~/.workbuddy/skills/ssh-server-manager`
+   - OpenClaw 个人级：`~/.agents/skills/ssh-server-manager`
+   - OpenClaw 工作区级：`<workspace>/skills/ssh-server-manager`
+   - 找到哪个目录有 `.git` 文件夹就用哪个
+2. 执行更新命令：
+   ```bash
+   cd <Skill安装目录> && git pull origin main
+   ```
+3. 若 git pull 失败（本地有修改冲突），执行：
+   ```bash
+   git stash && git pull origin main
+   ```
+4. 向用户确认更新完成，简要说明本次更新内容
+
+### 一键安装/更新（用户手动执行）
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/YouzSpace/ssh-server-manager-skills/main/install.sh | bash
+```
+
+脚本自动判断：已安装则更新（git pull），未安装则全新安装（git clone）。
