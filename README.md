@@ -87,7 +87,14 @@ cd ~/.workbuddy/skills/ssh-server-manager && git pull origin main
 
 ### 使用辅助脚本
 
+先进入 Skill 目录，然后运行脚本：
+
 ```bash
+# 进入 Skill 目录
+cd ~/.workbuddy/skills/ssh-server-manager
+# 或 OpenClaw:
+# cd ~/.agents/skills/ssh-server-manager
+
 # 测试连接
 python3 scripts/ssh_helper.py test --host 192.168.1.100 --user root --key ~/.ssh/id_ed25519
 

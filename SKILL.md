@@ -48,7 +48,7 @@ Skill 触发后，按以下顺序执行：
 ### 1. 测试连通性
 
 ```bash
-powershell -Command "Test-NetConnection -ComputerName <IP> -Port 22"
+ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no <user>@<IP> "echo ok" 2>/dev/null && echo "端口可达" || echo "端口不可达"
 ```
 
 - 连通 → 继续下一步
@@ -94,7 +94,7 @@ ssh -i <私钥> <user>@<IP> "uname -a && free -h && df -h / && cat /etc/os-relea
 
 ### 服务器连接信息
 
-以下信息保存到 **MEMORY.md**（本地内存文件，不上传 Git）：
+以下信息保存到本地内存文件（WorkBuddy: `MEMORY.md`，OpenClaw: 本地状态），不上传 Git：
 
 - 服务器 IP / 域名、SSH 端口
 - 用户名
