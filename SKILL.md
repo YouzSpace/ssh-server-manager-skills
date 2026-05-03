@@ -140,6 +140,8 @@ Skill 触发后，按顺序执行：
 |------|------|----------|
 | 3X-UI 面板 | [references/3x-ui-install.md](references/3x-ui-install.md) | 用户选择安装时读取 |
 | MTG (MTProto Proxy) | [references/mtg-install.md](references/mtg-install.md) | 用户选择安装时读取 |
+| 防火墙部署 | [references/firewall-deployment.md](references/firewall-deployment.md) | 部署防火墙时读取 |
+| conntrack 调优 | [references/conntrack-tuning.md](references/conntrack-tuning.md) | 连接追踪问题时读取 |
 
 未覆盖的服务，按通用步骤安装，或参考官方文档。
 
@@ -164,6 +166,8 @@ ss -tlnp | grep <端口>       # 端口检查
 | 服务器操作（执行命令/上传下载文件/运行脚本） | [references/ssh-operations.md](references/ssh-operations.md) |
 | 3X-UI 安装 | [references/3x-ui-install.md](references/3x-ui-install.md) |
 | MTG 安装 | [references/mtg-install.md](references/mtg-install.md) |
+| 防火墙部署 | [references/firewall-deployment.md](references/firewall-deployment.md) |
+| conntrack 表满/连接追踪问题 | [references/conntrack-tuning.md](references/conntrack-tuning.md) |
 
 ---
 

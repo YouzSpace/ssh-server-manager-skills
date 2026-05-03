@@ -125,7 +125,9 @@ ssh-server-manager/
 │   ├── mtg-install.md          # MTG (MTProto Proxy) 安装指南
 │   ├── ssh-setup.md            # SSH 密钥配置
 │   ├── ssh-keepalive.md        # SSH 超时保活配置
-│   └── ssh-operations.md       # 服务器操作（命令/上传下载/脚本）
+│   ├── ssh-operations.md       # 服务器操作（命令/上传下载/脚本）
+│   ├── firewall-deployment.md  # 防火墙部署参考
+│   └── conntrack-tuning.md     # conntrack 连接追踪调优
 └── scripts/
     └── ssh_helper.py           # SSH 辅助工具
 ```
