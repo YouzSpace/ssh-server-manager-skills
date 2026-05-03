@@ -9,248 +9,188 @@ description: >
 
 # SSH Server Manager Skill
 
-通过 SSH 密钥认证连接远程 Linux 服务器，执行命令、管理服务、部署应用的完整工作流。
+通过 SSH 密钥认证连接远程 Linux 服务器，执行命令、管理服务、部署应用。
 
 ---
 
-## 触发时执行流程
+## 核心工作流
 
-Skill 触发后，按以下顺序执行：
+Skill 触发后，按顺序执行：
 
-1. **确定目标服务器** — 获取连接参数（IP、用户名、私钥路径、端口），来源优先级：
-   - 用户本次对话中明确提供的信息
-   - 用户 `~/.ssh/config` 中已配置的 Host 别名
-   - 若有多个服务器，询问用户选择
-2. **测试连通性** — 确认 SSH 端口可达
-3. **建立连接** — 使用密钥认证连接服务器
-4. **连接成功后，展示选项菜单** — 让用户选择接下来要做什么
-5. **执行任务** — 根据用户选择执行具体操作
-6. **验证结果** — 确认操作成功，输出关键信息
-7. **保存连接信息** — 更新用户 `~/.ssh/config`，方便后续快速连接
+1. **读取记忆** — 检查本地记忆文件中是否已有该服务器的信息（IP、用户名、密钥路径、密码等），有则直接使用
+2. **确定目标服务器** — 优先级：用户本次提供 > 已记忆的服务器 > `~/.ssh/config` > 询问用户
+3. **测试连通性** — `ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no <user>@<IP> "echo ok"`
+4. **建立连接** — 使用密钥认证；若密钥未配置，读取 `references/ssh-setup.md` 执行配置流程
+5. **记录信息** — 将服务器 IP、用户名、密钥路径、密码等关键信息写入本地记忆（见下方记忆管理规则），下次直接使用
+6. **展示菜单** — 让用户选择操作
 
----
+### 菜单选项
 
-## 连接成功后的选项菜单
+连接成功后展示：
 
-首次成功连接服务器时，向用户展示以下选项：
-
-1. **安装服务** — 根据 `references/` 中的安装文档部署服务（如 3X-UI、MTG 等）
-2. **管理服务** — 管理已部署的服务（启动/停止/重启/查看日志）
-3. **查看状态** — 展示服务器整体状态概览
+1. **安装服务** — 读取 `references/` 中对应安装文档执行
+2. **管理服务** — 启动/停止/重启/查看日志
+3. **查看状态** — CPU、内存、磁盘、运行中的服务
 4. **自由操作** — 手动执行命令
 
-用户选择后，跳转到对应操作执行。
-
 ---
 
-## 初始化连接（首次连接新服务器）
+## 记忆管理规则
 
-### 1. 测试连通性
+**核心原则：记住用户输入的一切关键信息，下次对话自动使用，不让用户重复输入。**
 
-```bash
-ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no <user>@<IP> "echo ok" 2>/dev/null && echo "端口可达" || echo "端口不可达"
-```
-
-- 连通 → 继续下一步
-- 不通 → 提示用户检查防火墙/安全组，等待用户确认后重试
-
-### 2. 配置密钥认证
-
-检查本地是否已有私钥文件，不存在则生成：
-
-```bash
-ssh-keygen -t ed25519 -f <私钥路径> -N "" -C "ssh-server-manager"
-```
-
-将公钥复制到服务器 `~/.ssh/authorized_keys`（提示用户操作或提供命令）。
-
-### 3. 验证连接
-
-```bash
-ssh -i <私钥路径> -o StrictHostKeyChecking=no <user>@<IP> "echo ok"
-```
-
-返回 `ok` → 连接成功，继续执行任务。失败 → 排查密钥权限或防火墙问题。
-
-### 4. 采集服务器信息（首次连接）
-
-```bash
-ssh -i <私钥> <user>@<IP> "uname -a && free -h && df -h / && cat /etc/os-release"
-```
-
-将结果记录到服务器信息中，供后续操作参考。
-
----
-
-## 敏感信息存储
-
-安全规则要求敏感信息不得写入 Git 仓库或内存文件，具体存储方式如下：
-
-### SSH 密钥
-
-- **私钥路径**：保存到 `~/.ssh/config`（标准 SSH 配置），不含密钥内容本身
-- **私钥文件**：存储在用户本地 `~/.ssh/` 目录下，文件权限 600，**不上传到任何仓库**
-- **公钥**：添加到服务器 `~/.ssh/authorized_keys`
-
-### 服务器连接信息
-
-以下信息保存到本地内存文件（WorkBuddy: `MEMORY.md`，OpenClaw: 本地状态），不上传 Git：
-
-- 服务器 IP / 域名、SSH 端口
-- 用户名
-- 私钥路径（引用路径，不含密钥内容）
-
-### 服务凭证（密码、Secret、Token）
-
-- **禁止写入** Git 仓库、MEMORY.md、或任何可能被版本控制的文件
-- **禁止在对话输出中直接显示**
-- 安装脚本输出凭证时，提醒用户自行保存
-- 保存方式：提示用户记录到本地密码管理器或安全笔记中
-
----
-
-## SSH 超时保活
-
-当用户反馈 SSH 连接频繁断开时，执行以下配置：
-
-### 客户端配置
-
-读取 `~/.ssh/config`，检查目标 Host 是否已包含保活参数。若未配置，追加以下内容：
+### 文件结构
 
 ```
-Host <别名>
-    HostName <服务器IP>
-    User <用户名>
-    IdentityFile ~/.ssh/<私钥文件>
-    ServerAliveInterval 30
-    ServerAliveCountMax 3
-    ConnectTimeout 15
-    ConnectionAttempts 3
+.workbuddy/memory/
+├── MEMORY.md           # 长期记忆（覆写更新，只保留最新状态）
+├── YYYY-MM-DD.md       # 当日操作日志（追加）
+└── ...                 # 7天以上的旧日志自动清理
 ```
 
-### 服务器端配置
+### 读取时机
 
-通过 SSH 远程修改 `/etc/ssh/sshd_config`，确保以下配置已启用（未注释）：
+每次 Skill 触发时，读取以下文件恢复上下文：
+- `MEMORY.md` — 服务器信息、服务部署状态、密码凭证
+- 今日日志 — 今天已执行的操作
+- 昨日日志 — 昨天的操作（可选，按需读取）
 
-```
-TCPKeepAlive yes
-ClientAliveInterval 30
-ClientAliveCountMax 3
-```
+### 写入时机
 
-然后重启 SSH 服务：
+**必须写记忆的操作（完成一个实质任务后立即写入）：**
+- 连接了新服务器（记录 IP、用户名、密钥路径、SSH 端口）
+- 安装了服务（记录服务名、版本、端口、密码）
+- 卸载了服务（删除对应记录）
+- 修改了配置（面板密码、端口、SSL 证书等）
+- 服务状态变更（重启、停止、启动）
+- 用户说"记住这个"或"保存"
 
-```bash
-ssh -i <私钥> <user>@<IP> "systemctl restart sshd"
-```
+**不需要写记忆的操作：**
+- 查看服务器状态（临时信息，不记录）
+- 纯问答（没改变任何东西）
+- 操作失败（记录失败原因即可，不记操作细节）
 
-### 验证
+### MEMORY.md 格式（长期记忆）
 
-配置完成后，执行一个长时间命令（如 `top -b -n 1`），确认连接不再中途断开。
+每次更新时**覆写旧内容**，只保留最新状态：
 
----
+```markdown
+# 服务器信息
 
-## 执行服务器操作
+## <服务器别名或域名>
+- IP: <IP地址>
+- 用户: <用户名>
+- 密钥: <私钥路径>
+- SSH端口: <端口>
+- 系统: <操作系统信息>
 
-### 查看服务器状态
+### 已部署服务
+- <服务名>: <版本>, 端口 <端口>, 密码 <密码>
+- <服务名>: <版本>, 端口 <端口>
 
-```bash
-ssh -i <私钥> <user>@<IP> "uptime && free -h && df -h / && docker ps 2>/dev/null"
-```
-
-输出关键指标：运行时间、内存使用、磁盘占用、运行中的容器。
-
-### 执行任意命令
-
-```bash
-ssh -i <私钥> <user>@<IP> "<command>"
-```
-
-执行前向用户确认命令内容，执行后输出结果。
-
-### 上传文件
-
-```bash
-scp -i <私钥> <本地文件> <user>@<IP>:<远程路径>
+### 上次操作
+- <日期>: <简要描述>
 ```
 
-上传后验证文件存在：`ssh -i <私钥> <user>@<IP> "ls -lh <远程路径>"`
+### 每日日志格式（当日操作）
 
-### 下载文件
+在当天的日志文件中**追加**记录：
 
-```bash
-scp -i <私钥> <user>@<IP>:<远程文件> <本地路径>
+```markdown
+# YYYY-MM-DD
+
+## HH:MM - <操作标题>
+- <步骤1>
+- <步骤2>
+- 结果: <成功/失败>
 ```
 
-### 执行本地脚本
+### 清理规则
 
-```bash
-ssh -i <私钥> <user>@<IP> "bash -s" < <本地脚本文件>
+| 日志年龄 | 处理方式 |
+|---------|---------|
+| 0-1 天 | 保留原样，每次 Skill 触发时读取 |
+| 2-7 天 | 保留原样，用户询问时读取 |
+| 7 天以上 | 压缩摘要写入 MEMORY.md，删除原日志 |
+
+压缩示例：
+
+7天前日志（5条记录）→ 压缩为 MEMORY.md 中的一句话：
+```markdown
+- 04-26: 安装并配置 3X-UI（端口 2053，已配 SSL）
 ```
 
 ---
 
 ## 服务部署
 
-### 通用部署模式
+### 安装步骤
 
-安装任何服务时，遵循以下通用步骤：
-
-1. 检查服务器架构：`uname -m`
-2. 确认系统包管理器（apt/yum/dnf）
-3. 检查所需依赖是否已安装
-4. 下载/安装目标服务
-5. 配置服务（配置文件、systemd 单元）
-6. 启动并验证服务状态
-7. 确认端口监听
-8. 输出服务访问信息给用户
+1. 检查架构：`uname -m`
+2. 确认包管理器（apt/yum/dnf）
+3. 检查依赖
+4. 下载/安装服务
+5. 配置服务（配置文件、systemd）
+6. 启动并验证
+7. 输出访问信息给用户，同时写入本地记忆
 
 ### 可用的安装参考文档
 
-| 服务 | 参考文档 |
-|------|----------|
-| 3X-UI 面板（含域名/Cloudflare/SSL 配置） | [references/3x-ui-install.md](references/3x-ui-install.md) |
-| MTG (MTProto Proxy) | [references/mtg-install.md](references/mtg-install.md) |
+| 服务 | 文档 | 按需读取 |
+|------|------|----------|
+| 3X-UI 面板 | [references/3x-ui-install.md](references/3x-ui-install.md) | 用户选择安装时读取 |
+| MTG (MTProto Proxy) | [references/mtg-install.md](references/mtg-install.md) | 用户选择安装时读取 |
 
-对于 `references/` 中未覆盖的服务，按通用部署模式执行，或提示用户参考服务官方文档。
+未覆盖的服务，按通用步骤安装，或参考官方文档。
 
-### 管理已部署服务
-
-通用的服务管理命令：
+### 管理服务
 
 ```bash
-systemctl status <服务名>     # 查看状态
-systemctl restart <服务名>    # 重启
-systemctl stop <服务名>       # 停止
-systemctl enable <服务名>     # 开机自启
-journalctl -u <服务名> -f     # 实时查看日志
-ss -tlnp | grep <端口>        # 检查端口监听
+systemctl status|restart|stop|enable <服务名>
+journalctl -u <服务名> -f    # 日志
+ss -tlnp | grep <端口>       # 端口检查
 ```
+
+---
+
+## 按需读取的参考文档
+
+以下文档**不要预先加载**，仅在对应场景触发时读取：
+
+| 场景 | 文档 |
+|------|------|
+| SSH 连接断开/超时 | [references/ssh-keepalive.md](references/ssh-keepalive.md) |
+| 首次配置密钥认证 | [references/ssh-setup.md](references/ssh-setup.md) |
+| 服务器操作（执行命令/上传下载文件/运行脚本） | [references/ssh-operations.md](references/ssh-operations.md) |
+| 3X-UI 安装 | [references/3x-ui-install.md](references/3x-ui-install.md) |
+| MTG 安装 | [references/mtg-install.md](references/mtg-install.md) |
 
 ---
 
 ## 安全规则
 
-- **敏感信息不输出**：Secret、密码、私钥内容不直接显示，提示用户自行保存
-- **操作前确认**：执行破坏性命令（rm、stop、uninstall）前必须向用户确认
-- **Cloudflare 提醒**：使用域名时，若配置了 Cloudflare，提醒用户关闭代理（DNS only）
+- 执行破坏性命令（rm、stop、uninstall）前必须向用户确认
+- 密码、Token 不在对话中直接重复显示
+- 使用 Cloudflare 域名时，提醒用户关闭代理（DNS only）
 
 ---
 
 ## 故障排查
 
-| 现象 | 排查步骤 |
-|------|----------|
-| SSH 连接超时 | 检查防火墙/安全组是否放行端口 22 |
-| SSH 连接断开 | 执行 SSH 超时保活配置 |
-| 密钥认证失败 | 检查私钥权限（600）、authorized_keys 内容 |
-| 端口被占用 | `ss -tlnp \| grep <端口>` 查看占用进程 |
-| 服务启动失败 | `journalctl -u <服务名> -n 50` 查看日志 |
+| 现象 | 排查 |
+|------|------|
+| SSH 超时 | 检查防火墙/安全组是否放行端口 22 |
+| SSH 断开 | 读取 `references/ssh-keepalive.md` 配置保活 |
+| 密钥认证失败 | 检查私钥权限（600）、authorized_keys |
+| 端口被占用 | `ss -tlnp \| grep <端口>` |
+| 服务启动失败 | `journalctl -u <服务名> -n 50` |
 | 面板无法访问 | 检查防火墙是否放行面板端口、确认服务运行中 |
+
+详细排查步骤，读取 [references/troubleshooting.md](references/troubleshooting.md)（若存在）。
 
 ---
 
-## 安装与更新
+## 安装与更新 Skill
 
 ### 用户请求更新时的执行流程
 
@@ -276,5 +216,3 @@ ss -tlnp | grep <端口>        # 检查端口监听
 ```bash
 curl -fsSL https://raw.githubusercontent.com/YouzSpace/ssh-server-manager-skills/main/install.sh | bash
 ```
-
-脚本自动判断：已安装则更新（git pull），未安装则全新安装（git clone）。
