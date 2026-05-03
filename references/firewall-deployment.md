@@ -3,6 +3,7 @@
 > **性质**：通用防火墙部署手册，不绑定具体端口值。
 > **用途**：部署防火墙、恢复配置。
 > **端口配置**：见具体设备的配置备份文档（重装后恢复用）。
+> ⚠️ **核心原则**：默认全关，只开确实在用的端口，多开一个端口多一份风险。本地服务（127.0.0.1）禁止放行。部署前必须 `ss -tlnp` 确认哪些端口在监听。
 
 ---
 
@@ -34,64 +35,42 @@
 │
 ├─ ⑭  ICMP（ping）→ 放行
 │
-├─ ⑮⑯  SYN 洪水防护 → 每秒最多指定个 SYN 包放行，超出丢弃
+├─ ⑮  无效状态包 → 丢弃
 │
-├─ ⑰  无效状态包 → 丢弃
-│
-├─ ⑱  所有 UDP → 丢弃
+├─ ⑯  所有 UDP → 丢弃
 │     服务器没有 UDP 服务（代理端口已在前面放过），全丢防 UDP 反射攻击
 │
-├─ ⑲  IP 分片包 → 丢弃
+├─ ⑰  IP 分片包 → 丢弃
 │
-├─ ⑳  XMAS 扫描包 → 丢弃
+├─ ⑱  XMAS 扫描包 → 丢弃
 │
-├─ ㉑  NULL 扫描包 → 丢弃
+├─ ⑲  NULL 扫描包 → 丢弃
 │
 └─ 兜底：默认策略 DROP
       以上规则都没匹配到的，全部丢弃
       白名单模式：没说能进的，都不让进
 ```
 
-**IPv6 防火墙**（规则类似，但必须放行 ICMPv6）：
+> ⚠️ **SYN 洪水防护**：不要添加通用 SYN 限速规则（`tcp --syn -m limit --limit 50/s`）。该规则没有端口限制，会 ACCEPT 所有 TCP 端口的 SYN 包，导致白名单形同虚设。默认 DROP 策略已经足够——不在白名单中的端口的 SYN 包会被 DROP，天然防 SYN 洪水。如果需要对特定端口做连接限速，使用 `recent` 模块（见第三节）。
+
+**IPv6 防火墙**（必须与 IPv4 白名单完全对应）：
 
 ```
 ① 已建立连接 → 放行
 ② 本地回环 → 放行
-③ SSH <SSH_PORT> → 放行
-④ 管理面板 <ADMIN_PORT> → 放行
-⑤ 订阅端口 <SUBSCRIPTION_PORT> → 放行
-⑥ Xray 代理 <PROXY_PORT> TCP → 放行
-⑦ Xray 代理 <PROXY_PORT> UDP → 放行
+③④  Xray 代理端口 <PROXY_PORT> TCP+UDP → 放行（不限速）
+⑤ SSH <SSH_PORT> → 放行
+⑥ 管理面板 <ADMIN_PORT> → 放行
+⑦ 订阅端口 <SUBSCRIPTION_PORT> → 放行
 ⑧ ICMPv6 → 放行（IPv6 地址分配、邻居发现依赖它）
 兜底 默认 DROP
 ```
 
----
-
-## 二、核心原则：只开放需要的端口
-
-**白名单思维**：默认全关，只开确实在用的端口。多开一个端口，多一份风险。
-
-### 判断标准
-
-| 端口类型 | 是否放行 |
-|-----------|----------|
-| 正在用的（SSH、代理、管理面板） | ✅ 放行 |
-| "以后可能用到"的端口 | ❌ 不放行，用的时候再开 |
-| 本地服务（127.0.0.1） | ❌ 不需要，外部不可达 |
-
-### 检查哪些端口在监听
-
-```bash
-ss -tlnp   # TCP 监听
-ss -ulnp   # UDP 监听
-```
-
-> **经验**：部署防火墙前，先用 `ss -tlnp` 确认哪些端口真的在监听，只放行这些端口。
+> ⚠️ IPv6 规则必须与 IPv4 完全对应。新增 IPv4 白名单端口时，必须同步添加 IPv6 规则。
 
 ---
 
-## 三、限速原理（防暴力破解的核心）
+## 二、限速原理（防暴力破解的核心）
 
 限速**不是**限制网速，而是限制「**新建连接**」的速度。用 iptables 的 `recent` 模块实现，每组 3 条规则配合：
 
@@ -123,39 +102,7 @@ iptables -A INPUT -p tcp --dport <SSH_PORT> -j ACCEPT
 
 ---
 
-## 四、规则顺序（非常重要！）
-
-iptables 从上到下逐条匹配，匹配到就停止，不再看后面的。
-
-### 关键顺序规则
-
-1. **已建立连接放行（①）必须在最前面**，否则 SSH 连上就断
-2. **代理端口放行（⑫⑬）必须在「所有 UDP 丢弃」（⑱）之前**，否则代理 UDP 流量被挡
-3. **限速 3 条必须连在一起**（SET → DROP → ACCEPT），顺序不能乱
-4. **SYN 防护（⑮⑯）必须在默认 DROP 之前**
-
-### 正确顺序示例
-
-```
-① 已建立连接放行
-② 本地回环放行
-③ SSH 限速（3 条）
-④ 管理面板限速（3 条）
-⑤ 订阅端口限速（3 条）
-⑥ 代理端口 TCP + UDP 放行  ← ✅ 在"所有 UDP 丢弃"之前
-⑦ ICMP 放行
-⑧ SYN 洪水防护（2 条）
-⑨ 无效包丢弃
-⑩ 所有 UDP 丢弃  ← 代理 UDP 已在前方放行，这里只丢其他 UDP
-⑪ IP 分片丢弃
-⑫ XMAS 扫描丢弃
-⑬ NULL 扫描丢弃
-⑭ 默认 DROP
-```
-
----
-
-## 五、完整部署命令（带占位符）
+## 三、完整部署命令（带占位符）
 
 ### IPv4 防火墙
 
@@ -176,8 +123,6 @@ ADMIN_RATE="20"         # 管理面板最大连接数
 ADMIN_TIME="60"         # 管理面板时间窗口
 SUB_RATE="20"           # 订阅端口最大连接数
 SUB_TIME="60"           # 订阅端口时间窗口
-SYN_LIMIT="50"          # SYN 洪水防护：每秒最大 SYN 包数
-SYN_BURST="100"         # SYN 洪水防护：突发上限
 
 # ========== 开始部署 ==========
 
@@ -217,22 +162,18 @@ iptables -A INPUT -p udp --dport $PROXY_PORT -j ACCEPT
 # 8. ICMP 放行（允许 ping）
 iptables -A INPUT -p icmp -j ACCEPT
 
-# 9. SYN 洪水防护（2 条）
-iptables -A INPUT -p tcp --syn -m limit --limit $SYN_LIMIT/s --limit-burst $SYN_BURST -j ACCEPT
-iptables -A INPUT -p tcp --syn -j DROP
-
-# 10. 高级防护
+# 9. 高级防护
 iptables -A INPUT -m conntrack --ctstate INVALID -j DROP  # 无效状态包
 iptables -A INPUT -p udp -j DROP                         # 所有 UDP 丢弃（代理 UDP 已在前方放行）
 iptables -A INPUT -f -j DROP                             # IP 分片包
 iptables -A INPUT -p tcp --tcp-flags ALL ALL -j DROP      # XMAS 扫描
 iptables -A INPUT -p tcp --tcp-flags ALL NONE -j DROP     # NULL 扫描
 
-# 11. 保存规则（必须！否则重启后丢失）
+# 10. 保存规则（必须！否则重启后丢失）
 iptables-save > /etc/iptables/rules.v4
 
 echo "IPv4 防火墙部署完成"
-iptables -L INPUT -n --line-numbers  # 验证规则
+iptables -L INPUT -n --line-numbers
 ```
 
 ### IPv6 防火墙
@@ -262,14 +203,14 @@ ip6tables -P OUTPUT ACCEPT
 ip6tables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 ip6tables -A INPUT -i lo -j ACCEPT
 
-# 4. 端口放行（IPv6 不做限速，直接放行）
+# 4. 代理端口（TCP + UDP，不限速）← 必须在其他端口之前，与 IPv4 对应
+ip6tables -A INPUT -p tcp --dport $PROXY_PORT -j ACCEPT
+ip6tables -A INPUT -p udp --dport $PROXY_PORT -j ACCEPT
+
+# 5. 端口放行（IPv6 不做限速，直接放行）
 ip6tables -A INPUT -p tcp --dport $SSH_PORT -j ACCEPT
 ip6tables -A INPUT -p tcp --dport $ADMIN_PORT -j ACCEPT
 ip6tables -A INPUT -p tcp --dport $SUBSCRIPTION_PORT -j ACCEPT
-
-# 5. 代理端口（TCP + UDP）
-ip6tables -A INPUT -p tcp --dport $PROXY_PORT -j ACCEPT
-ip6tables -A INPUT -p udp --dport $PROXY_PORT -j ACCEPT
 
 # 6. ICMPv6 放行（必须！IPv6 地址分配、邻居发现依赖它）
 ip6tables -A INPUT -p icmpv6 -j ACCEPT
@@ -283,7 +224,7 @@ ip6tables -L INPUT -n --line-numbers  # 验证规则
 
 ---
 
-## 六、规则持久化（重启后不丢失）
+## 四、规则持久化（重启后不丢失）
 
 iptables 规则默认存在内存中，**服务器重启后规则全部消失**。必须安装持久化工具：
 
@@ -305,7 +246,7 @@ ip6tables-save > /etc/iptables/rules.v6
 
 ---
 
-## 七、常用命令速查
+## 五、常用命令速查
 
 | 操作 | 命令 |
 |------|------|
@@ -318,7 +259,7 @@ ip6tables-save > /etc/iptables/rules.v6
 
 ---
 
-## 八、端口放行决策表
+## 六、端口放行决策表
 
 | 服务类型 | 放行方式 | 为什么 | 举例 |
 |----------|----------|--------|------|
@@ -331,18 +272,18 @@ ip6tables-save > /etc/iptables/rules.v6
 
 ---
 
-## 九、新增或删除端口规则
+## 七、新增或删除端口规则
 
 ### 新增限速端口（以 8080 为例）
 
 ```bash
-# 1. 查看当前规则，找到 SYN 防护规则的行号
+# 1. 查看当前规则，找到「所有 UDP 丢弃」规则的行号
 iptables -L INPUT -n --line-numbers
 
-# 2. 在 SYN 防护之前插入 3 条限速规则
-iptables -I INPUT 15 -p tcp --dport 8080 -m recent --set --name web8080 --rsource
-iptables -I INPUT 16 -p tcp --dport 8080 -m recent --update --seconds 60 --hitcount 20 --name web8080 --rsource -j DROP
-iptables -I INPUT 17 -p tcp --dport 8080 -j ACCEPT
+# 2. 在「所有 UDP 丢弃」之前插入 3 条限速规则
+iptables -I INPUT <行号> -p tcp --dport 8080 -m recent --set --name web8080 --rsource
+iptables -I INPUT <行号+1> -p tcp --dport 8080 -m recent --update --seconds 60 --hitcount 20 --name web8080 --rsource -j DROP
+iptables -I INPUT <行号+2> -p tcp --dport 8080 -j ACCEPT
 
 # 3. 保存（必须！）
 iptables-save > /etc/iptables/rules.v4
@@ -355,8 +296,8 @@ iptables-save > /etc/iptables/rules.v4
 iptables -L INPUT -n --line-numbers
 
 # 2. 在"所有 UDP 丢弃"之前插入
-iptables -I INPUT 14 -p tcp --dport 443 -j ACCEPT
-iptables -I INPUT 15 -p udp --dport 443 -j ACCEPT
+iptables -I INPUT <行号> -p tcp --dport 443 -j ACCEPT
+iptables -I INPUT <行号+1> -p udp --dport 443 -j ACCEPT
 
 # 3. 保存
 iptables-save > /etc/iptables/rules.v4
