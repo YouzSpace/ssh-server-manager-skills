@@ -120,9 +120,12 @@ ssh-server-manager/
 ├── install.sh                  # 一键安装/更新脚本
 ├── LICENSE                     # MIT 许可证
 ├── .gitignore
-├── references/                 # 服务安装参考文档
+├── references/                 # 按需加载的参考文档
 │   ├── 3x-ui-install.md        # 3X-UI 面板安装指南
-│   └── mtg-install.md          # MTG (MTProto Proxy) 安装指南
+│   ├── mtg-install.md          # MTG (MTProto Proxy) 安装指南
+│   ├── ssh-setup.md            # SSH 密钥配置
+│   ├── ssh-keepalive.md        # SSH 超时保活配置
+│   └── ssh-operations.md       # 服务器操作（命令/上传下载/脚本）
 └── scripts/
     └── ssh_helper.py           # SSH 辅助工具
 ```
