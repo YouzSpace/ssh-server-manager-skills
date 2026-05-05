@@ -53,7 +53,60 @@ sysctl net.netfilter.nf_conntrack_tcp_timeout_established
 
 ---
 
-## 四、查看当前状态
+## 四、模块持久化（关键 ⚠️）
+
+**踩坑记录**：配置文件内容正确，但 `nf_conntrack_max` 等参数重启后不生效。根因是 `nf_conntrack` 模块未在开机时自动加载，`systemd-sysctl` 应用配置时 conntrack 参数不存在被**静默跳过**。
+
+### 必须执行的两步
+
+**第 1 步**：确保模块开机自动加载
+
+```bash
+echo "nf_conntrack" > /etc/modules-load.d/conntrack.conf
+```
+
+**第 2 步**：创建 systemd oneshot 服务，在 `systemd-sysctl` 之前先加载模块再应用配置
+
+```bash
+cat > /etc/systemd/system/conntrack-sysctl.service << 'EOF'
+[Unit]
+Description=Load nf_conntrack and apply sysctl
+Before=systemd-sysctl.service
+After=modules-load.service
+
+[Service]
+Type=oneshot
+ExecStart=/sbin/modprobe nf_conntrack
+ExecStart=/sbin/sysctl -p /etc/sysctl.d/99-security.conf
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl enable conntrack-sysctl.service
+```
+
+### 验证
+
+```bash
+# 重启后验证（必须重启才算真正验证）
+sysctl net.netfilter.nf_conntrack_max    # 必须返回 16384
+sysctl net.netfilter.nf_conntrack_tcp_timeout_established  # 必须返回 86400
+```
+
+### 为什么需要两层保障？
+
+| 机制 | 作用 |
+|------|------|
+| `/etc/modules-load.d/conntrack.conf` | 内核层面：开机时加载 `nf_conntrack` 模块 |
+| `conntrack-sysctl.service` | 确保在 `systemd-sysctl` 读取配置之前，模块已就绪 |
+
+> **重装系统后恢复 checklist**：除了执行 `modprobe nf_conntrack && sysctl -p`，**必须**创建上述两个文件，否则重启后参数又会丢失。
+
+---
+
+## 五、查看当前状态
 
 ```bash
 # 当前已追踪连接数
@@ -68,7 +121,7 @@ awk "BEGIN {printf \"%.2f%%\", $(cat /proc/sys/net/netfilter/nf_conntrack_count)
 
 ---
 
-## 五、为什么代理服务器特别容易满？
+## 六、为什么代理服务器特别容易满？
 
 - 默认 `nf_conntrack_max=2048`，太少了
 - 已建立连接超时默认 **5 天**，连接释放极慢
@@ -78,4 +131,4 @@ awk "BEGIN {printf \"%.2f%%\", $(cat /proc/sys/net/netfilter/nf_conntrack_count)
 
 ---
 
-*最后更新：2026-05-04*
+*最后更新：2026-05-05*
